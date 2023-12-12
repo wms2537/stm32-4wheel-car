@@ -58,12 +58,18 @@ UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart1_rx;
 DMA_HandleTypeDef hdma_usart2_rx;
+DMA_HandleTypeDef hdma_usart3_rx;
 
 /* USER CODE BEGIN PV */
 int arr[4] = {0};
 uint8_t u1_RX_Buf[MAX_LEN];
 uint8_t u1_RX_ReceiveBit;
 int rx_len = 0;
+
+uint8_t jy62Receive[JY62_MESSAGE_LENTH];	//实时记录收到的信息
+uint8_t jy62ReceiveByte;
+uint8_t currentReceiveIndex = 0;
+uint8_t jy62Message[JY62_MESSAGE_LENTH];   //确认无误后用于解码的信息
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -82,10 +88,12 @@ static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void set_direction(int mfr, int mfl, int mbr, int mbl);
 void set_motor_speed(int mfr, int mfl, int mbr, int mbl);
-void motor_forward();
-void motor_backward();
-void motor_right();
-void motor_left();
+void motor_forward(uint16_t time);
+void motor_backward(uint16_t time);
+void motor_left(uint16_t time);
+void motor_right(uint16_t time);
+void motor_right_90deg();
+void motor_left_90deg();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -132,7 +140,7 @@ int main(void)
   MX_USART3_UART_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  HAL_UART_Receive_DMA(&huart1, &u1_RX_ReceiveBit, 1);
+//  HAL_UART_Receive_DMA(&huart1, &u1_RX_ReceiveBit, 1);
 
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
@@ -140,11 +148,14 @@ int main(void)
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
 
   set_motor_speed(0,0,0,0);
-//  jy62_Init(&huart2);
-//  SetBaud(115200);
-//  SetHorizontal();
-//  InitAngle();
-//  Calibrate();
+//  motor_forward();
+  HAL_Delay(2000);
+  jy62_Init(&huart2);
+  HAL_UART_Receive_DMA(&huart2,&jy62ReceiveByte,1);
+  SetHorizontal();
+  InitAngle();
+  Calibrate();
+  HAL_Delay(2000);
 //  SleepOrAwake();
   /* USER CODE END 2 */
 
@@ -155,44 +166,28 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-//	  	  float roll = GetRoll();
-//	  	  float pitch = GetPitch();
-//	  	  float yaw = GetYaw();
-//	  	  char uart_buf[24];
-//	  	  int uart_buf_len = sprintf(uart_buf, "ROW: %f, PITCH:%f, YAW:%f\r\n", roll, pitch, yaw);
 
 //	  	  srand(HAL_GetTick());
 //	  	  int num_a = rand()%(10+1);
 //	  	  int num_b = rand()%(10+1);
 //		  int num_c = rand()%(10+1);
 //		  int num_d = rand()%(10+1);
+//		  char uart_buf[24];
 //	  	  int uart_buf_len = sprintf(uart_buf, "A=(%d,%d)B=(%d,%d)\r\n", num_a, num_b, num_c, num_d);
 //	  	  HAL_UART_Transmit(&huart1, (uint8_t*)uart_buf, uart_buf_len, 100);
-//	  	  HAL_UART_Transmit(&huart3, (uint8_t*)uart_buf, uart_buf_len, 100);
 //		  HAL_Delay(1000);
 
-	  	  motor_forward();
-	  	  HAL_Delay(2000);
-	  	  set_motor_speed(0,0,0,0);
-	  	  HAL_Delay(2000);
+	  	  motor_forward(500);
+	  	  HAL_Delay(1000);
 
-	  	  motor_backward();
-		  HAL_Delay(2000);
-		  set_motor_speed(0,0,0,0);
-		  HAL_Delay(2000);
+	  	  motor_backward(500);
+		  HAL_Delay(1000);
 
-		  motor_right();
-		  HAL_Delay(2000);
-		  set_motor_speed(0,0,0,0);
-		  HAL_Delay(2000);
+		  motor_right(457);
+		  HAL_Delay(1000);
 
-		  motor_left();
-		  HAL_Delay(2000);
-		  set_motor_speed(0,0,0,0);
-		  HAL_Delay(2000);
-
-
-	  	  set_motor_speed(0,0,0,0);
+		  motor_left(481);
+		  HAL_Delay(1000);
 
 
   }
@@ -686,6 +681,9 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA1_CLK_ENABLE();
 
   /* DMA interrupt init */
+  /* DMA1_Channel3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel3_IRQn);
   /* DMA1_Channel5_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel5_IRQn);
@@ -738,11 +736,31 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart){
-//	if(huart ==&huart2)//我这里选择的是uart2所以这里用的是&huart2，其实应该是大家选择哪个串口就填写哪个
-//	{
-//		jy62MessageRecord();
-//
-//	}
+	if(huart == &huart2)//我这里选择的是uart2所以这里用的是&huart2，其实应该是大家选择哪个串口就填写哪个
+	{
+		jy62Receive[currentReceiveIndex ++] = jy62ReceiveByte;
+			if(currentReceiveIndex ==  JY62_MESSAGE_LENTH) {
+				currentReceiveIndex = 0;
+				if(jy62Receive[0] ==0x55)
+					{
+						uint8_t sum  = 0x00;
+						for (int i = 0; i < JY62_MESSAGE_LENTH-1; i++)
+						{
+							sum += jy62Receive[i];
+						}
+						if(sum == jy62Receive[JY62_MESSAGE_LENTH-1])
+						{
+							for (int i = 0; i < JY62_MESSAGE_LENTH; i++)
+							{
+								jy62Message[i] = jy62Receive[i];
+							}
+						    Decode(jy62Message);
+						}
+					}
+			}
+		//	HAL_UART_Receive_DMA(jy62_huart,jy62Receive,JY62_MESSAGE_LENTH);
+			HAL_UART_Receive_DMA(&huart2,&jy62ReceiveByte,1);
+	}
 	if(huart == &huart1){
 //		HAL_UART_Transmit(&huart3, &u1_RX_ReceiveBit, 1, 100);
 		u1_RX_Buf[rx_len ++] = u1_RX_ReceiveBit;
@@ -825,24 +843,94 @@ void set_motor_speed(int mfr, int mfl, int mbr, int mbl){
 	TIM2->CCR4 = mbl;
 }
 
-void motor_forward(){
+void motor_forward(uint16_t time){
 	set_direction(1,1,1,1);
 	set_motor_speed(1000,1000,1000,1000);
-}
-
-void motor_backward(){
+	HAL_Delay(time*0.8);
+	set_motor_speed(500,500,500,500);
+	HAL_Delay(time*0.2);
 	set_direction(0,0,0,0);
 	set_motor_speed(1000,1000,1000,1000);
+	HAL_Delay(80);
+	set_motor_speed(0,0,0,0);
 }
 
-void motor_right(){
-	set_direction(0,1,0,1);
-	set_motor_speed(1000,1000,1000,1000);
+void motor_backward(uint16_t time){
+	set_direction(0,0,0,0);
+		set_motor_speed(1000,1000,1000,1000);
+		HAL_Delay(time*0.8);
+		set_motor_speed(500,500,500,500);
+		HAL_Delay(time*0.2);
+		set_direction(1,1,1,1);
+		set_motor_speed(1000,1000,1000,1000);
+		HAL_Delay(80);
+		set_motor_speed(0,0,0,0);
 }
 
-void motor_left(){
+void motor_left(uint16_t time){
 	set_direction(1,0,1,0);
 	set_motor_speed(1000,1000,1000,1000);
+	HAL_Delay(time);
+	set_direction(0,1,0,1);
+	HAL_Delay(65);
+	set_motor_speed(0,0,0,0);
+}
+
+void motor_right(uint16_t time){
+	set_direction(0,1,0,1);
+	set_motor_speed(1000,1000,1000,1000);
+	HAL_Delay(time);
+	set_direction(1,0,1,0);
+	HAL_Delay(65);
+	set_motor_speed(0,0,0,0);
+}
+
+void motor_right_90deg(){
+	float initialYaw = GetYaw();
+	float targetYaw = initialYaw + 80.0;
+	uint8_t offset = 0;
+	if(targetYaw >= 360) {
+		targetYaw = targetYaw - 360.0;
+		offset = 1;
+	}
+    set_direction(0,1,0,1);
+    set_motor_speed(1000,1000,1000,1000);
+	while(1){
+		float currentYaw = GetYaw();
+		if(offset == 1) {
+			if(currentYaw >= targetYaw && currentYaw < initialYaw) break;
+		} else {
+			if(currentYaw >= targetYaw) break;
+		}
+	}
+	set_direction(1,0,1,0);
+	HAL_Delay(100);
+	set_motor_speed(0,0,0,0);
+	return;
+}
+
+void motor_left_90deg(){
+	float initialYaw = GetYaw();
+	float targetYaw = initialYaw - 80.0;
+	uint8_t offset = 0;
+	if(targetYaw < 0) {
+		targetYaw = targetYaw + 360.0;
+		offset = 1;
+	}
+	set_direction(1,0,1,0);
+	set_motor_speed(1000,1000,1000,1000);
+	while(1){
+		float currentYaw = GetYaw();
+		if(offset == 1) {
+			if(currentYaw <= targetYaw && currentYaw > initialYaw) break;
+		} else {
+			if(currentYaw <= targetYaw) break;
+		}
+	}
+	set_direction(0,1,0,1);
+	HAL_Delay(100);
+	set_motor_speed(0,0,0,0);
+	return;
 }
 /* USER CODE END 4 */
 

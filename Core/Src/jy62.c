@@ -8,8 +8,7 @@
 
 #include"jy62.h"
 
-uint8_t jy62Receive[JY62_MESSAGE_LENTH];	//实时记录收到的信息
-uint8_t jy62Message[JY62_MESSAGE_LENTH];   //确认无误后用于解码的信息
+
 uint8_t initAngle[3] = {0xFF,0xAA,0x52};
 uint8_t calibrateAcce[3] = {0xFF,0xAA,0x67};
 uint8_t setBaud115200[3] = {0xFF,0xAA,0x63};
@@ -28,65 +27,49 @@ struct Temp Temperature;  //储存温度值
 void jy62_Init(UART_HandleTypeDef *huart)
 {
 	jy62_huart = huart;
-    HAL_UART_Receive_DMA(jy62_huart,jy62Receive,JY62_MESSAGE_LENTH);
 }
 
 void jy62MessageRecord(void)
 {
-	if(jy62Receive[0] ==0x55)
-	{
-		uint8_t sum  = 0x00;
-		for (int i = 0; i < JY62_MESSAGE_LENTH-1; i++)
-		{
-			sum += jy62Receive[i];
-		}
-		if(sum == jy62Receive[JY62_MESSAGE_LENTH-1])
-		{
-			for (int i = 0; i < JY62_MESSAGE_LENTH; i++)
-			{
-				jy62Message[i] = jy62Receive[i];
-			}
-		    Decode();
-		}
-	}
-	HAL_UART_Receive_DMA(jy62_huart,jy62Receive,JY62_MESSAGE_LENTH);
+
+
 }
 
 void SetBaud(int Baud)
 {
 	if(Baud == 115200)
 	{
-		HAL_UART_Transmit(jy62_huart,setBaud115200,3,HAL_MAX_DELAY);
+		HAL_UART_Transmit(jy62_huart,setBaud115200,3,100);
 	}
 	else if(Baud == 9600)
 	{
-		HAL_UART_Transmit(jy62_huart,setBaud115200,3,HAL_MAX_DELAY);
+		HAL_UART_Transmit(jy62_huart,setBaud115200,3,100);
 	}
 }
 
 void SetHorizontal()
 {
-	HAL_UART_Transmit(jy62_huart,setHorizontal,3,HAL_MAX_DELAY);
+	HAL_UART_Transmit(jy62_huart,setHorizontal,3,100);
 }
 
 void SetVertical()
 {
-	HAL_UART_Transmit(jy62_huart,setVertical,3,HAL_MAX_DELAY);
+	HAL_UART_Transmit(jy62_huart,setVertical,3,100);
 }
 
 void InitAngle()
 {
-	HAL_UART_Transmit(jy62_huart,initAngle,3,HAL_MAX_DELAY);
+	HAL_UART_Transmit(jy62_huart,initAngle,3,100);
 }
 
 void Calibrate()
 {
-	HAL_UART_Transmit(jy62_huart,calibrateAcce,3,HAL_MAX_DELAY);
+	HAL_UART_Transmit(jy62_huart,calibrateAcce,3,100);
 }
 
 void SleepOrAwake()
 {
-	HAL_UART_Transmit(jy62_huart,sleepAndAwake,3,HAL_MAX_DELAY);
+	HAL_UART_Transmit(jy62_huart,sleepAndAwake,3,100);
 }
 
 
@@ -137,40 +120,40 @@ float GetVeloZ()
 
 /***************************************************/
 
-void DecodeAngle()
+void DecodeAngle(uint8_t* jy62Message)
 {
 	Angle.roll = (float)((jy62Message[3]<<8)|jy62Message[2])/32768 * 180 ;
 	Angle.pitch = (float)((jy62Message[5]<<8)|jy62Message[4])/32768 * 180 ;
 	Angle.yaw =  (float)((jy62Message[7]<<8)|jy62Message[6])/32768 * 180 ;
 }
 
-void DecodeAccelerate()
+void DecodeAccelerate(uint8_t* jy62Message)
 {
 	Accelerate.accelerate_x = (float)((jy62Message[3]<<8)|jy62Message[2])/32768 * 16 * g ;
 	Accelerate.accelerate_y = (float)((jy62Message[5]<<8)|jy62Message[4])/32768 * 16 * g ;
 	Accelerate.accelerate_z = (float)((jy62Message[7]<<8)|jy62Message[6])/32768 * 16 * g ;
 }
 
-void DecodeVelocity()
+void DecodeVelocity(uint8_t* jy62Message)
 {
 	Velocity.velocity_x = (float)((jy62Message[3]<<8)|jy62Message[2])/32768 * 2000 ;
 	Velocity.velocity_y = (float)((jy62Message[5]<<8)|jy62Message[4])/32768 * 2000 ;
 	Velocity.velocity_z = (float)((jy62Message[7]<<8)|jy62Message[6])/32768 * 2000 ;
 }
 
-void DecodeTemperature()
+void DecodeTemperature(uint8_t* jy62Message)
 {
 	Temperature.temperature = ((short)(jy62Message[9])<<8 | jy62Message[8])/340 +36.53;
 }
 
 
-void Decode()
+void Decode(uint8_t* jy62Message)
 {
     switch (jy62Message[1])
 	{
-	    case 0x51: DecodeAccelerate(); break;
-		case 0x52: DecodeVelocity();  break;
-		case 0x53: DecodeAngle(); break;
+	    case 0x51: DecodeAccelerate(jy62Message); break;
+		case 0x52: DecodeVelocity(jy62Message);  break;
+		case 0x53: DecodeAngle(jy62Message); break;
 	}
-	DecodeTemperature();
+	DecodeTemperature(jy62Message);
 }

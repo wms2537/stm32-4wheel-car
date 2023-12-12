@@ -87,6 +87,6 @@ float GetTemperature(void);
 
 
 /****************************************************/
-void Decode();
+void Decode(uint8_t* jy62Message);
 
 #endif /* SRC_JY62_H_ */
