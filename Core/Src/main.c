@@ -100,7 +100,7 @@ Position_edc25 PosOpp;
 uint8_t map[8][8];
 uint8_t map_height[8][8];
 int32_t game_time;
-GameStage_edc25 current_stage = GameStage_edc25.IDLE;
+GameStage_edc25 current_stage = 0;
 bool has_bed;
 bool has_bed_opponent;
 uint8_t agility;
@@ -111,6 +111,7 @@ uint8_t emerald_count;
 uint8_t wool_count;
 
 uint8_t state;
+bool sentScanningRequest = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -211,15 +212,15 @@ int main(void)
 
   set_motor_speed(0,0,0,0);
 //  motor_forward();
-  HAL_Delay(2000);
+//  HAL_Delay(2000);
   zigbee_Init(&huart1);
-  jy62_Init(&huart2);
-  HAL_UART_Receive_DMA(&huart2,&jy62ReceiveByte,1);
+//  jy62_Init(&huart2);
+//  HAL_UART_Receive_DMA(&huart2,&jy62ReceiveByte,1);
   HAL_UART_Receive_DMA(&huart3,k210Receive,64);
-  SetHorizontal();
-  InitAngle();
-  Calibrate();
-  HAL_Delay(2000);
+//  SetHorizontal();
+//  InitAngle();
+//  Calibrate();
+//  HAL_Delay(2000);
   uint8_t hp = 0;
 
 	uint8_t Agility = 0;
@@ -236,11 +237,15 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 	  switch(current_stage) {
-	  case GameStage_edc25.READY:
-	      char charbuf[] = "hi";
-	  	  HAL_UART_Transmit(&huart3, (uint8_t*)charbuf, sizeof(charbuf), 100);
+	  case 0:
+		  if(!sentScanningRequest) {
+		      char charbuf[] = "hi";
+		  	  HAL_UART_Transmit(&huart3, (uint8_t*)charbuf, sizeof(charbuf), 100);
+		  	  HAL_UART_Transmit(&huart2, (uint8_t*)charbuf, sizeof(charbuf), 100);
+		  	  sentScanningRequest = true;
+		  }
 	  	  break;
-	  case GameStage_edc25.RUNNING:
+	  case 1:
 	  {
 	      switch(state) {
 	      case 0:
@@ -248,9 +253,9 @@ int main(void)
 	      }
 	      break;
 	  }
-	  case GameStage_edc25.BATTLING:
+	  case 2:
 	  	  break;
-	  case GameStage_edc25.FINISHED:
+	  case 3:
 	      break;
 	  }
 //	  hp = getHealth();
@@ -886,31 +891,31 @@ void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart)
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart){
-	if(huart == &huart2)//我这里选择的是uart2所以这里用的是&huart2，其实应该是大家选择哪个串口就填写哪个
-	{
-		jy62Receive[currentReceiveIndex ++] = jy62ReceiveByte;
-			if(currentReceiveIndex ==  JY62_MESSAGE_LENTH) {
-				currentReceiveIndex = 0;
-				if(jy62Receive[0] ==0x55)
-					{
-						uint8_t sum  = 0x00;
-						for (int i = 0; i < JY62_MESSAGE_LENTH-1; i++)
-						{
-							sum += jy62Receive[i];
-						}
-						if(sum == jy62Receive[JY62_MESSAGE_LENTH-1])
-						{
-							for (int i = 0; i < JY62_MESSAGE_LENTH; i++)
-							{
-								jy62Message[i] = jy62Receive[i];
-							}
-						    Decode(jy62Message);
-						}
-					}
-			}
-		//	HAL_UART_Receive_DMA(jy62_huart,jy62Receive,JY62_MESSAGE_LENTH);
-			HAL_UART_Receive_DMA(&huart2,&jy62ReceiveByte,1);
-	}
+//	if(huart == &huart2)//我这里选择的是uart2所以这里用的是&huart2，其实应该是大家选择哪个串口就填写哪个
+//	{
+//		jy62Receive[currentReceiveIndex ++] = jy62ReceiveByte;
+//			if(currentReceiveIndex ==  JY62_MESSAGE_LENTH) {
+//				currentReceiveIndex = 0;
+//				if(jy62Receive[0] ==0x55)
+//					{
+//						uint8_t sum  = 0x00;
+//						for (int i = 0; i < JY62_MESSAGE_LENTH-1; i++)
+//						{
+//							sum += jy62Receive[i];
+//						}
+//						if(sum == jy62Receive[JY62_MESSAGE_LENTH-1])
+//						{
+//							for (int i = 0; i < JY62_MESSAGE_LENTH; i++)
+//							{
+//								jy62Message[i] = jy62Receive[i];
+//							}
+//						    Decode(jy62Message);
+//						}
+//					}
+//			}
+//		//	HAL_UART_Receive_DMA(jy62_huart,jy62Receive,JY62_MESSAGE_LENTH);
+//			HAL_UART_Receive_DMA(&huart2,&jy62ReceiveByte,1);
+//	}
 	if(huart == &huart1){
 //		char charbuf[] = "DMA\r\n";
 //		HAL_UART_Transmit(&huart3, (uint8_t*)charbuf, sizeof(charbuf), 100);
@@ -927,11 +932,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart){
 										map[i][j] = k210Receive[i*8+j];
 									}
 								}
-//								for(uint8_t i = 0; i< 8; i++) {
-//									char char_buf[200];
-//									int char_buf_len = sprintf(char_buf, "Row %d: \n%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t\r\n", i, map[i][0], map[i][1], map[i][2], map[i][3], map[i][4], map[i][5], map[i][6], map[i][7]);
-//									HAL_UART_Transmit(&huart3, (uint8_t*)char_buf, char_buf_len, 100);
-//								}
+								for(uint8_t i = 0; i< 8; i++) {
+									char char_buf[200];
+									int char_buf_len = sprintf(char_buf, "Row %d: \n%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t\r\n", i, map[i][0], map[i][1], map[i][2], map[i][3], map[i][4], map[i][5], map[i][6], map[i][7]);
+									HAL_UART_Transmit(&huart2, (uint8_t*)char_buf, char_buf_len, 100);
+								}
 
 			HAL_UART_Receive_DMA(&huart3,k210Receive,64);
 		}
@@ -1202,8 +1207,8 @@ void decodeGameMessage() {
 	getHeightOfAllChunks(map_height);
 	has_bed = hasBed();
 	has_bed_opponent = hasBedOpponent();
-	getPosition(*Pos);
-	getPositionOpponent(*PosOpp);
+	getPosition(&Pos);
+	getPositionOpponent(&PosOpp);
 	agility = getAgility();
 	health = getHealth();
 	max_health = getMaxHealth();
