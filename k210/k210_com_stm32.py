@@ -49,7 +49,7 @@ box_width = 0
 box_height = 0
 
 # Initialize grid map
-# empty = 0; grey = 1; yellow = 2; blue = 3; corner = 5;  
+# empty = 0; grey = 1; yellow = 2; blue = 3; corner = 5;
 grid_map = [[0 for _ in range(8)] for _ in range(8)]
 
 # Initialize variables
@@ -58,12 +58,15 @@ same_value_counter = 0  # To count the occurrence of the same value
 
 #start_scanning
 start_str = "hi"
-read_data = uart_usbttl.read()
-read_str = read_data.decode('utf-8')
 while True:
-    if read_str == write_str:break
-    else: continue
-        
+    read_data = uart_usbttl.read()
+    if read_data:
+        read_str = str(read_data)
+        if read_str[6:8] == start_str:
+            print("hi")
+            break
+
+
 # Function to get the most frequent value in a list
 def most_frequent(List):
     return max(set(List), key=List.count)
@@ -169,8 +172,7 @@ for n in range(50):
 
 flattened_buf = [item for sublist in grid_map for item in sublist]
 uart_usbttl.write(bytearray(flattened_buf))
-    
 
-
-
+uart_usbttl.deinit()
+del uart_usbttl
 
