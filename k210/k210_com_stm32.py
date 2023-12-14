@@ -56,6 +56,14 @@ grid_map = [[0 for _ in range(8)] for _ in range(8)]
 continuous_values = []  # To store continuous readings
 same_value_counter = 0  # To count the occurrence of the same value
 
+#start_scanning
+start_str = "hi"
+read_data = uart_usbttl.read()
+read_str = read_data.decode('utf-8')
+while True:
+    if read_str == write_str:break
+    else: continue
+        
 # Function to get the most frequent value in a list
 def most_frequent(List):
     return max(set(List), key=List.count)
