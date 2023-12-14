@@ -77,10 +77,9 @@ DMA_HandleTypeDef hdma_usart2_rx;
 DMA_HandleTypeDef hdma_usart3_rx;
 
 /* USER CODE BEGIN PV */
-int arr[4] = {0};
-uint8_t u1_RX_Buf[MAX_LEN];
-uint8_t u1_RX_ReceiveBit;
-int rx_len = 0;
+uint8_t k210Receive[66];
+uint8_t k210ReceiveByte;
+uint8_t k210ReceiveIndex = 0;
 
 uint8_t jy62Receive[JY62_MESSAGE_LENTH];	//实时记录收到的信息
 uint8_t jy62ReceiveByte;
@@ -94,7 +93,10 @@ uint8_t cutavoid[4];
 
 uint8_t gameStatusMessage[MAX_STATUS_LEN];
 
-UART_HandleTypeDef *zigbee_huart;
+Position_edc25 Pos;
+Position_edc25 PosOpp;
+
+uint8_t map[8][8];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -198,6 +200,7 @@ int main(void)
   zigbee_Init(&huart1);
   jy62_Init(&huart2);
   HAL_UART_Receive_DMA(&huart2,&jy62ReceiveByte,1);
+  HAL_UART_Receive_DMA(&huart3,k210Receive,64);
   SetHorizontal();
   InitAngle();
   Calibrate();
@@ -221,17 +224,15 @@ int main(void)
 	  	  int32_t time = getGameTime();
 	  	  Agility = getAgility();
 	  	  count = getWoolCount();
-	  	Position_edc25 Pos;
 	  	  getPosition(&Pos);
-	  	Position_edc25 PosOpp;
-	  		  	  getPositionOpponent(&PosOpp);
+		  getPositionOpponent(&PosOpp);
 
-	  		  char char_buf[200];
-	  		  int char_buf_len = sprintf(char_buf, "t: %ld, ht: %d, ag: %d, wc: %d, x: %f, y: %f, xo: %f, yo: %f\r\n",time, hp,Agility,count, Pos.posx, Pos.posy, PosOpp.posx, PosOpp.posy);
-	  		  HAL_UART_Transmit(&huart3, (uint8_t*)char_buf, char_buf_len, 100);
+		  char char_buf[200];
+		  int char_buf_len = sprintf(char_buf, "t: %ld, ht: %d, ag: %d, wc: %d, x: %f, y: %f, xo: %f, yo: %f\r\n", time, hp, Agility, count, Pos.posx, Pos.posy, PosOpp.posx, PosOpp.posy);
+		  HAL_UART_Transmit(&huart3, (uint8_t*)char_buf, char_buf_len, 100);
 //	  		  HAL_Delay(1000);
 
-	  	  HAL_Delay(500);
+	  	  HAL_Delay(2000);
 //	  	  srand(HAL_GetTick());
 //	  	  int num_a = rand()%(10+1);
 //	  	  int num_b = rand()%(10+1);
@@ -840,8 +841,7 @@ void zigbee_Init(UART_HandleTypeDef *huart)
     memset(zigbeeMessage, 0x00, MAX_MSG_LEN);
     memset(zigbeeRaw, 0x00, MAX_MSG_LEN);
     memset(gameStatusMessage, 0x00, MAX_STATUS_LEN);
-    zigbee_huart = huart;
-    HAL_UART_Receive_DMA(zigbee_huart, zigbeeRaw, MAX_MSG_LEN);
+    HAL_UART_Receive_DMA(&huart1, zigbeeRaw, MAX_MSG_LEN);
 }
 
 void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart)
@@ -895,6 +895,23 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart){
 		memPtr = modularAdd(MAX_MSG_LEN / 2, memPtr, MAX_MSG_LEN * 2);
 		zigbeeMessageRecord();
 	}
+	if(huart == &huart3)
+		{
+		char charbuf[] = "DMA\r\n";
+				HAL_UART_Transmit(&huart3, (uint8_t*)charbuf, sizeof(charbuf), 100);
+				for(uint8_t i = 0; i< 8; i++) {
+									for(uint8_t j = 0; j< 8; j++) {
+										map[i][j] = k210Receive[i*8+j];
+									}
+								}
+								for(uint8_t i = 0; i< 8; i++) {
+									char char_buf[200];
+									int char_buf_len = sprintf(char_buf, "Row %d: \n%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t\r\n", i, map[i][0], map[i][1], map[i][2], map[i][3], map[i][4], map[i][5], map[i][6], map[i][7]);
+									HAL_UART_Transmit(&huart3, (uint8_t*)char_buf, char_buf_len, 100);
+								}
+
+			HAL_UART_Receive_DMA(&huart3,k210Receive,64);
+		}
 }
 
 void set_direction(int mfr, int mfl, int mbr, int mbl){
@@ -1140,19 +1157,19 @@ uint8_t getWoolCount()
 void attack_id(uint8_t chunk_id)
 {
     uint8_t slaver_msg[7] = {0x55, 0xAA, 0x02, 0x00, (uint8_t)(0^chunk_id), 0, chunk_id};
-    HAL_UART_Transmit(zigbee_huart, slaver_msg, 7, HAL_MAX_DELAY);
+    HAL_UART_Transmit(&huart1, slaver_msg, 7, HAL_MAX_DELAY);
 }
 
 void place_block_id(uint8_t chunk_id)
 {
     uint8_t slaver_msg[7] = {0x55, 0xAA, 0x02, 0x00, (uint8_t)(1^chunk_id), 1, chunk_id};
-    HAL_UART_Transmit(zigbee_huart, slaver_msg, 7, HAL_MAX_DELAY);
+    HAL_UART_Transmit(&huart1, slaver_msg, 7, HAL_MAX_DELAY);
 }
 
 void trade_id(uint8_t item_id)
 {
     uint8_t slaver_msg[7] = {0x55, 0xAA, 0x02, 0x00, (uint8_t)(2^item_id), 2, item_id};
-    HAL_UART_Transmit(zigbee_huart, slaver_msg, 7, HAL_MAX_DELAY);
+    HAL_UART_Transmit(&huart1, slaver_msg, 7, HAL_MAX_DELAY);
 }
 /* USER CODE END 4 */
 
