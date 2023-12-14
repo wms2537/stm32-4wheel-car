@@ -37,7 +37,8 @@ typedef enum
     READY,
     RUNNING,
     BATTLING,
-    FINISHED
+    FINISHED,
+	IDLE
 } GameStage_edc25;
 
 typedef struct
@@ -97,6 +98,19 @@ Position_edc25 Pos;
 Position_edc25 PosOpp;
 
 uint8_t map[8][8];
+uint8_t map_height[8][8];
+int32_t game_time;
+GameStage_edc25 current_stage = GameStage_edc25.IDLE;
+bool has_bed;
+bool has_bed_opponent;
+uint8_t agility;
+uint8_t health;
+uint8_t max_health;
+uint8_t strength;
+uint8_t emerald_count;
+uint8_t wool_count;
+
+uint8_t state;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -141,6 +155,7 @@ uint8_t getWoolCount();
 void attack_id(uint8_t chunk_id);
 void place_block_id(uint8_t chunk_id);
 void trade_id(uint8_t item_id);
+void decodeGameMessage();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -220,28 +235,38 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  hp = getHealth();
-	  	  int32_t time = getGameTime();
-	  	  Agility = getAgility();
-	  	  count = getWoolCount();
-	  	  getPosition(&Pos);
-		  getPositionOpponent(&PosOpp);
-
-		  char char_buf[200];
-		  int char_buf_len = sprintf(char_buf, "t: %ld, ht: %d, ag: %d, wc: %d, x: %f, y: %f, xo: %f, yo: %f\r\n", time, hp, Agility, count, Pos.posx, Pos.posy, PosOpp.posx, PosOpp.posy);
-		  HAL_UART_Transmit(&huart3, (uint8_t*)char_buf, char_buf_len, 100);
-//	  		  HAL_Delay(1000);
-
-	  	  HAL_Delay(2000);
-//	  	  srand(HAL_GetTick());
-//	  	  int num_a = rand()%(10+1);
-//	  	  int num_b = rand()%(10+1);
-//		  int num_c = rand()%(10+1);
-//		  int num_d = rand()%(10+1);
-//		  char uart_buf[24];
-//	  	  int uart_buf_len = sprintf(uart_buf, "A=(%d,%d)B=(%d,%d)\r\n", num_a, num_b, num_c, num_d);
-//	  	  HAL_UART_Transmit(&huart1, (uint8_t*)uart_buf, uart_buf_len, 100);
-//		  HAL_Delay(1000);
+	  switch(current_stage) {
+	  case GameStage_edc25.READY:
+	      char charbuf[] = "hi";
+	  	  HAL_UART_Transmit(&huart3, (uint8_t*)charbuf, sizeof(charbuf), 100);
+	  	  break;
+	  case GameStage_edc25.RUNNING:
+	  {
+	      switch(state) {
+	      case 0:
+	    	  break;
+	      }
+	      break;
+	  }
+	  case GameStage_edc25.BATTLING:
+	  	  break;
+	  case GameStage_edc25.FINISHED:
+	      break;
+	  }
+//	  hp = getHealth();
+//	  	  int32_t time = getGameTime();
+//	  	  Agility = getAgility();
+//	  	  count = getWoolCount();
+//	  	  getPosition(&Pos);
+//		  getPositionOpponent(&PosOpp);
+//
+//		  char char_buf[200];
+//		  int char_buf_len = sprintf(char_buf, "t: %ld, ht: %d, ag: %d, wc: %d, x: %f, y: %f, xo: %f, yo: %f\r\n", time, hp, Agility, count, Pos.posx, Pos.posy, PosOpp.posx, PosOpp.posy);
+//		  HAL_UART_Transmit(&huart3, (uint8_t*)char_buf, char_buf_len, 100);
+////	  		  HAL_Delay(1000);
+//
+//	  	  HAL_Delay(2000);
+//
 
 //	  	  motor_forward(500);
 //	  	  HAL_Delay(1000);
@@ -897,18 +922,16 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart){
 	}
 	if(huart == &huart3)
 		{
-		char charbuf[] = "DMA\r\n";
-				HAL_UART_Transmit(&huart3, (uint8_t*)charbuf, sizeof(charbuf), 100);
 				for(uint8_t i = 0; i< 8; i++) {
 									for(uint8_t j = 0; j< 8; j++) {
 										map[i][j] = k210Receive[i*8+j];
 									}
 								}
-								for(uint8_t i = 0; i< 8; i++) {
-									char char_buf[200];
-									int char_buf_len = sprintf(char_buf, "Row %d: \n%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t\r\n", i, map[i][0], map[i][1], map[i][2], map[i][3], map[i][4], map[i][5], map[i][6], map[i][7]);
-									HAL_UART_Transmit(&huart3, (uint8_t*)char_buf, char_buf_len, 100);
-								}
+//								for(uint8_t i = 0; i< 8; i++) {
+//									char char_buf[200];
+//									int char_buf_len = sprintf(char_buf, "Row %d: \n%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t\r\n", i, map[i][0], map[i][1], map[i][2], map[i][3], map[i][4], map[i][5], map[i][6], map[i][7]);
+//									HAL_UART_Transmit(&huart3, (uint8_t*)char_buf, char_buf_len, 100);
+//								}
 
 			HAL_UART_Receive_DMA(&huart3,k210Receive,64);
 		}
@@ -1074,6 +1097,7 @@ uint8_t zigbeeMessageRecord()
         {
             gameStatusMessage[i] = tempZigbeeMessage[modularAdd(msgIndex, 5 + i, MAX_MSG_LEN * 2)];
         }
+        decodeGameMessage();
     }
     return 0;
 }
@@ -1170,6 +1194,22 @@ void trade_id(uint8_t item_id)
 {
     uint8_t slaver_msg[7] = {0x55, 0xAA, 0x02, 0x00, (uint8_t)(2^item_id), 2, item_id};
     HAL_UART_Transmit(&huart1, slaver_msg, 7, HAL_MAX_DELAY);
+}
+
+void decodeGameMessage() {
+	game_time = getGameTime();
+	current_stage = getGameStage();
+	getHeightOfAllChunks(map_height);
+	has_bed = hasBed();
+	has_bed_opponent = hasBedOpponent();
+	getPosition(*Pos);
+	getPositionOpponent(*PosOpp);
+	agility = getAgility();
+	health = getHealth();
+	max_health = getMaxHealth();
+	strength = getStrength();
+	emerald_count = getEmeraldCount();
+	wool_count = getWoolCount();
 }
 /* USER CODE END 4 */
 
