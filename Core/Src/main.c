@@ -45,6 +45,15 @@ typedef struct
 {
     float posx;
     float posy;
+    int coordx() {
+    	return (int)posx;
+    }
+    int coordy() {
+		return (int)posy;
+	}
+    int chunkid() {
+    	return Pos.coordx()+Pos.coordy()*8;
+    }
 } Position_edc25;
 /* USER CODE END PTD */
 
@@ -98,15 +107,17 @@ Position_edc25 Pos;
 Position_edc25 PosOpp;
 
 uint8_t map[8][8] = {
-		{5, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0, 5},
+		{5, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 5},
 };
+Position_edc25 homePos = {0.5, 0.5};
+Position_edc25 opponentHomePos = {7.5, 7.5};
 uint8_t map_height[8][8];
 int32_t game_time;
 GameStage_edc25 current_stage = 0;
@@ -121,7 +132,7 @@ uint8_t wool_count;
 
 uint8_t state;
 bool sentScanningRequest = false;
-uint8_t currentDirection = 0;
+uint8_t currentDirection = 0; // N:0, W:1, S:2, E:3
 uint8_t lastEmeraldCount = 0;
 /* USER CODE END PV */
 
@@ -168,6 +179,7 @@ void attack_id(uint8_t chunk_id);
 void place_block_id(uint8_t chunk_id);
 void trade_id(uint8_t item_id);
 void decodeGameMessage();
+void goToPos(Position_edc25 pos);
 Position_edc25 getMinePosiiton(uint8_t type); //0: empty 1: metal 2: gold, 3: diamond, 5: corner
 /* USER CODE END PFP */
 
@@ -243,38 +255,61 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  switch(current_stage) {
-	  case 0:
-		  if(!sentScanningRequest) {
-		      char charbuf[] = "hi";
-		  	  HAL_UART_Transmit(&huart3, (uint8_t*)charbuf, sizeof(charbuf), 100);
-		  	  HAL_UART_Transmit(&huart2, (uint8_t*)charbuf, sizeof(charbuf), 100);
-		  	  sentScanningRequest = true;
-		  }
-	  	  break;
-	  case 1:
-	  {
-		  if((Pos.posx >= 0 && Pos.posx < 1) && (Pos.posy >= 0 && Pos.posy < 1)) {
 
-			  if(emerald_count - lastEmeraldCount >= 10) {
-				  for(int i = 0; i< emeraldCount/10;i++) {
-					  trade_id(0); // trade wool
-					  placeBlockId(0);
-				  }
-			  }else {
-
+	  // Perform actions based on game stage
+	  switch (current_stage) {
+		  case READY:
+			  // Collect emeralds
+			  if (emeraldDistance <= 1) {
+				  // Collect emerald
+				  // Update emeraldDistance
+			  } else {
+				  // Move towards emerald
+				  // Update emeraldDistance
 			  }
-		  }
-	      switch(state) {
-	      case 0:
-	    	  break;
-	      }
-	      break;
-	  }
-	  case 2:
-	  	  break;
-	  case 3:
-	      break;
+
+			  // Check if emerald is not reachable
+			  if (emeraldDistance > 3) {
+				  // Return to base or consider 'suicide'
+			  }
+
+			  break;
+
+		  case RUNNING:
+			  // Increase bed height based on wool collection
+			  // Monitor health (HP) and opponent's potential attack damage
+			  // Combat actions - attacking opponents, retreating, counter-attacking
+
+			  // Check if opponent is within range
+			  if (opponentBedDistance <= 3) {
+				  // Attack the opponent's bed and retreat
+			  }
+
+			  // Check received damage from opponent's attack
+			  if (health <= 3 * opponentAttackDamage) {
+				  // Retreat
+			  } else if (health >= 3 * opponentAttackDamage && opponentAttackDamage <= 5) {
+				  // Counter-attack
+			  }
+
+			  // Encounter evasion logic
+
+			  break;
+
+		  case BATTLING:
+			  // Implement actions during a battle
+
+			  break;
+
+		  case FINISHED:
+			  // Handle game finishing actions
+
+			  break;
+
+		  default:
+			  // Handle default case or error
+
+			  break;
 	  }
 //	  hp = getHealth();
 //	  	  int32_t time = getGameTime();
@@ -1197,7 +1232,7 @@ void decodeGameMessage() {
 	strength = getStrength();
 	emerald_count = getEmeraldCount();
 	 if((Pos.posx >= 0 && Pos.posx < 1) && (Pos.posy >= 0 && Pos.posy < 1)) {
-		 lastEmeraldCount = emeraldCount;
+//		 lastEmeraldCount = emeraldCount;
 	 }
 	wool_count = getWoolCount();
 }
@@ -1215,6 +1250,89 @@ Position_edc25 getMinePosiiton(uint8_t type) {
 		}
 	}
 	return result;
+}
+
+void goToPos(Position_edc25 pos) {
+	if(currentDirection % 2) { // E/W
+		while(Pos.coordx() != pos.coordx()) {
+			if(Pos.coordx() > pos.coordx()) {
+				Position_edc25 destination = {Pos.posx-1, Pos.posy};
+				if(map_height[destination.chunkid()] == 0) {
+					place_block_id(destination.chunkid());
+				}
+				motor_backward(500);
+			} else if(Pos.coordx() < pos.coordx()) {
+				Position_edc25 destination = {Pos.posx+1, Pos.posy};
+				if(map_height[destination.chunkid()] == 0) {
+					place_block_id(destination.chunkid());
+				}
+				motor_forward(500);
+			}
+			HAL_Delay(1000);
+		}
+		if(currentDirection == 1) {
+			motor_right_90deg();
+		} else if (currentDirection == 3) {
+			motor_left_90deg();
+		}
+		HAL_Delay(1000);
+		while(Pos.coordy() != pos.coordy()) {
+			if(Pos.coordy() > pos.coordy()) {
+				Position_edc25 destination = {Pos.posx, Pos.posy - 1};
+				if(map_height[destination.chunkid()] == 0) {
+					place_block_id(destination.chunkid());
+				}
+				motor_backward(500);
+			} else if(Pos.coordx() < pos.coordx()) {
+				Position_edc25 destination = {Pos.posx, Pos.posy + 1};
+				if(map_height[destination.chunkid()] == 0) {
+					place_block_id(destination.chunkid());
+				}
+				motor_forward(500);
+			}
+			HAL_Delay(1000);
+		}
+	} else {
+		while(Pos.coordy() != pos.coordy()) {
+			if(Pos.coordy() > pos.coordy()) {
+				Position_edc25 destination = {Pos.posx, Pos.posy - 1};
+				if(map_height[destination.chunkid()] == 0) {
+					place_block_id(destination.chunkid());
+				}
+				motor_backward(500);
+			} else if(Pos.coordx() < pos.coordx()) {
+				Position_edc25 destination = {Pos.posx, Pos.posy + 1};
+				if(map_height[destination.chunkid()] == 0) {
+					place_block_id(destination.chunkid());
+				}
+				motor_forward(500);
+			}
+			HAL_Delay(1000);
+		}
+		if(currentDirection == 0) {
+			motor_right_90deg();
+		} else if (currentDirection == 2) {
+			motor_left_90deg();
+		}
+		HAL_Delay(1000);
+		while(Pos.coordx() != pos.coordx()) {
+			if(Pos.coordx() > pos.coordx()) {
+				Position_edc25 destination = {Pos.posx-1, Pos.posy};
+				if(map_height[destination.chunkid()] == 0) {
+					place_block_id(destination.chunkid());
+				}
+				motor_backward(500);
+			} else if(Pos.coordx() < pos.coordx()) {
+				Position_edc25 destination = {Pos.posx+1, Pos.posy};
+				if(map_height[destination.chunkid()] == 0) {
+					place_block_id(destination.chunkid());
+				}
+				motor_forward(500);
+			}
+			HAL_Delay(1000);
+		}
+	}
+
 }
 /* USER CODE END 4 */
 
