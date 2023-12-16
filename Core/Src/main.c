@@ -97,7 +97,16 @@ uint8_t gameStatusMessage[MAX_STATUS_LEN];
 Position_edc25 Pos;
 Position_edc25 PosOpp;
 
-uint8_t map[8][8];
+uint8_t map[8][8] = {
+		{5, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 5},
+};
 uint8_t map_height[8][8];
 int32_t game_time;
 GameStage_edc25 current_stage = 0;
@@ -112,6 +121,8 @@ uint8_t wool_count;
 
 uint8_t state;
 bool sentScanningRequest = false;
+uint8_t currentDirection = 0;
+uint8_t lastEmeraldCount = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -157,6 +168,7 @@ void attack_id(uint8_t chunk_id);
 void place_block_id(uint8_t chunk_id);
 void trade_id(uint8_t item_id);
 void decodeGameMessage();
+Position_edc25 getMinePosiiton(uint8_t type); //0: empty 1: metal 2: gold, 3: diamond, 5: corner
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -221,11 +233,6 @@ int main(void)
 //  InitAngle();
 //  Calibrate();
 //  HAL_Delay(2000);
-  uint8_t hp = 0;
-
-	uint8_t Agility = 0;
-
-	uint8_t count = 0;
 //  SleepOrAwake();
   /* USER CODE END 2 */
 
@@ -247,6 +254,17 @@ int main(void)
 	  	  break;
 	  case 1:
 	  {
+		  if((Pos.posx >= 0 && Pos.posx < 1) && (Pos.posy >= 0 && Pos.posy < 1)) {
+
+			  if(emerald_count - lastEmeraldCount >= 10) {
+				  for(int i = 0; i< emeraldCount/10;i++) {
+					  trade_id(0); // trade wool
+					  placeBlockId(0);
+				  }
+			  }else {
+
+			  }
+		  }
 	      switch(state) {
 	      case 0:
 	    	  break;
@@ -1004,50 +1022,14 @@ void motor_right(uint16_t time){
 }
 
 void motor_right_90deg(){
-	float initialYaw = GetYaw();
-	float targetYaw = initialYaw + 80.0;
-	uint8_t offset = 0;
-	if(targetYaw >= 360) {
-		targetYaw = targetYaw - 360.0;
-		offset = 1;
-	}
-    set_direction(0,1,0,1);
-    set_motor_speed(1000,1000,1000,1000);
-	while(1){
-		float currentYaw = GetYaw();
-		if(offset == 1) {
-			if(currentYaw >= targetYaw && currentYaw < initialYaw) break;
-		} else {
-			if(currentYaw >= targetYaw) break;
-		}
-	}
-	set_direction(1,0,1,0);
-	HAL_Delay(100);
-	set_motor_speed(0,0,0,0);
+	motor_right(457);
+	currentDirection --;
 	return;
 }
 
 void motor_left_90deg(){
-	float initialYaw = GetYaw();
-	float targetYaw = initialYaw - 80.0;
-	uint8_t offset = 0;
-	if(targetYaw < 0) {
-		targetYaw = targetYaw + 360.0;
-		offset = 1;
-	}
-	set_direction(1,0,1,0);
-	set_motor_speed(1000,1000,1000,1000);
-	while(1){
-		float currentYaw = GetYaw();
-		if(offset == 1) {
-			if(currentYaw <= targetYaw && currentYaw > initialYaw) break;
-		} else {
-			if(currentYaw <= targetYaw) break;
-		}
-	}
-	set_direction(0,1,0,1);
-	HAL_Delay(100);
-	set_motor_speed(0,0,0,0);
+	motor_left(481);
+	currentDirection ++;
 	return;
 }
 
@@ -1214,7 +1196,25 @@ void decodeGameMessage() {
 	max_health = getMaxHealth();
 	strength = getStrength();
 	emerald_count = getEmeraldCount();
+	 if((Pos.posx >= 0 && Pos.posx < 1) && (Pos.posy >= 0 && Pos.posy < 1)) {
+		 lastEmeraldCount = emeraldCount;
+	 }
 	wool_count = getWoolCount();
+}
+
+Position_edc25 getMinePosiiton(uint8_t type) {
+	Position_edc25 result;
+	result.posx = -1;
+	result.posy = -1;
+	for(int i = 0; i< 8; i++) {
+		for(int j=0; j<8; j++) {
+			if(map[i][j] == type) {
+				result.posx = i;
+				result.posy = j;
+			}
+		}
+	}
+	return result;
 }
 /* USER CODE END 4 */
 
