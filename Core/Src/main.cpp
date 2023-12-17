@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -28,6 +29,8 @@
 #include <ctype.h>
 #include <stdbool.h>
 #include <string.h>
+
+#include "types.hpp"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,20 +44,7 @@ typedef enum
 	IDLE
 } GameStage_edc25;
 
-typedef struct
-{
-    float posx;
-    float posy;
-    int coordx() {
-    	return (int)posx;
-    }
-    int coordy() {
-		return (int)posy;
-	}
-    int chunkid() {
-    	return Pos.coordx()+Pos.coordy()*8;
-    }
-} Position_edc25;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -86,6 +76,25 @@ DMA_HandleTypeDef hdma_usart1_rx;
 DMA_HandleTypeDef hdma_usart2_rx;
 DMA_HandleTypeDef hdma_usart3_rx;
 
+/* Definitions for defaultTask */
+osThreadId_t defaultTaskHandle;
+const osThreadAttr_t defaultTask_attributes = {
+  .name = "defaultTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for myTask02 */
+osThreadId_t myTask02Handle;
+const osThreadAttr_t myTask02_attributes = {
+  .name = "myTask02",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for myMutex01 */
+osMutexId_t myMutex01Handle;
+const osMutexAttr_t myMutex01_attributes = {
+  .name = "myMutex01"
+};
 /* USER CODE BEGIN PV */
 uint8_t k210Receive[66];
 uint8_t k210ReceiveByte;
@@ -107,20 +116,20 @@ Position_edc25 Pos;
 Position_edc25 PosOpp;
 
 uint8_t map[8][8] = {
-		{5, 0, 0, 0, 0, 0, 0, 0},
+		{5, 0, 0, 0, 0, 1, 0, 0},
+		{0, 0, 1, 0, 0, 2, 0, 0},
+		{0, 0, 0, 0, 0, 0, 2, 1},
+		{0, 3, 0, 0, 0, 0, 0, 0},
 		{0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0},
-		{0, 0, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 1, 0},
+		{0, 0, 0, 0, 3, 0, 0, 0},
 		{0, 0, 0, 0, 0, 0, 0, 5},
 };
 Position_edc25 homePos = {0.5, 0.5};
 Position_edc25 opponentHomePos = {7.5, 7.5};
-uint8_t map_height[8][8];
+uint8_t map_height[64];
 int32_t game_time;
-GameStage_edc25 current_stage = 0;
+GameStage_edc25 current_stage = READY;
 bool has_bed;
 bool has_bed_opponent;
 uint8_t agility;
@@ -149,6 +158,9 @@ static void MX_TIM8_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_USART1_UART_Init(void);
+void StartDefaultTask(void *argument);
+void StartTask02(void *argument);
+
 /* USER CODE BEGIN PFP */
 void set_direction(int mfr, int mfl, int mbr, int mbl);
 void set_motor_speed(int mfr, int mfl, int mbr, int mbl);
@@ -236,108 +248,62 @@ int main(void)
 
   set_motor_speed(0,0,0,0);
 //  motor_forward();
-//  HAL_Delay(2000);
+//  osDelay(2000);
   zigbee_Init(&huart1);
 //  jy62_Init(&huart2);
 //  HAL_UART_Receive_DMA(&huart2,&jy62ReceiveByte,1);
-  HAL_UART_Receive_DMA(&huart3,k210Receive,64);
+//  HAL_UART_Receive_DMA(&huart3,k210Receive,64);
 //  SetHorizontal();
 //  InitAngle();
 //  Calibrate();
-//  HAL_Delay(2000);
+//  osDelay(2000);
 //  SleepOrAwake();
   /* USER CODE END 2 */
 
+  /* Init scheduler */
+  osKernelInitialize();
+  /* Create the mutex(es) */
+  /* creation of myMutex01 */
+  myMutex01Handle = osMutexNew(&myMutex01_attributes);
+
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
+
+  /* USER CODE BEGIN RTOS_QUEUES */
+  /* add queues, ... */
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* creation of defaultTask */
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+
+  /* creation of myTask02 */
+  myTask02Handle = osThreadNew(StartTask02, NULL, &myTask02_attributes);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* add threads, ... */
+  /* USER CODE END RTOS_THREADS */
+
+  /* USER CODE BEGIN RTOS_EVENTS */
+  /* add events, ... */
+  /* USER CODE END RTOS_EVENTS */
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
-
-	  // Perform actions based on game stage
-	  switch (current_stage) {
-		  case READY:
-			  // Collect emeralds
-			  if (emeraldDistance <= 1) {
-				  // Collect emerald
-				  // Update emeraldDistance
-			  } else {
-				  // Move towards emerald
-				  // Update emeraldDistance
-			  }
-
-			  // Check if emerald is not reachable
-			  if (emeraldDistance > 3) {
-				  // Return to base or consider 'suicide'
-			  }
-
-			  break;
-
-		  case RUNNING:
-			  // Increase bed height based on wool collection
-			  // Monitor health (HP) and opponent's potential attack damage
-			  // Combat actions - attacking opponents, retreating, counter-attacking
-
-			  // Check if opponent is within range
-			  if (opponentBedDistance <= 3) {
-				  // Attack the opponent's bed and retreat
-			  }
-
-			  // Check received damage from opponent's attack
-			  if (health <= 3 * opponentAttackDamage) {
-				  // Retreat
-			  } else if (health >= 3 * opponentAttackDamage && opponentAttackDamage <= 5) {
-				  // Counter-attack
-			  }
-
-			  // Encounter evasion logic
-
-			  break;
-
-		  case BATTLING:
-			  // Implement actions during a battle
-
-			  break;
-
-		  case FINISHED:
-			  // Handle game finishing actions
-
-			  break;
-
-		  default:
-			  // Handle default case or error
-
-			  break;
-	  }
-//	  hp = getHealth();
-//	  	  int32_t time = getGameTime();
-//	  	  Agility = getAgility();
-//	  	  count = getWoolCount();
-//	  	  getPosition(&Pos);
-//		  getPositionOpponent(&PosOpp);
-//
-//		  char char_buf[200];
-//		  int char_buf_len = sprintf(char_buf, "t: %ld, ht: %d, ag: %d, wc: %d, x: %f, y: %f, xo: %f, yo: %f\r\n", time, hp, Agility, count, Pos.posx, Pos.posy, PosOpp.posx, PosOpp.posy);
-//		  HAL_UART_Transmit(&huart3, (uint8_t*)char_buf, char_buf_len, 100);
-////	  		  HAL_Delay(1000);
-//
-//	  	  HAL_Delay(2000);
-//
-
-//	  	  motor_forward(500);
-//	  	  HAL_Delay(1000);
-//
-//	  	  motor_backward(500);
-//		  HAL_Delay(1000);
-//
-//		  motor_right(457);
-//		  HAL_Delay(1000);
-//
-//		  motor_left(481);
-//		  HAL_Delay(1000);
-
+  while(1) {
 
   }
   /* USER CODE END 3 */
@@ -831,13 +797,13 @@ static void MX_DMA_Init(void)
 
   /* DMA interrupt init */
   /* DMA1_Channel3_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel3_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA1_Channel3_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel3_IRQn);
   /* DMA1_Channel5_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel5_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA1_Channel5_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel5_IRQn);
   /* DMA1_Channel6_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel6_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA1_Channel6_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel6_IRQn);
 
 }
@@ -932,7 +898,7 @@ void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart)
     if (huart == &huart1)
     {
 //    	char charbuf[] = "DMA_HALF\r\n";
-//    	HAL_UART_Transmit(&huart3, (uint8_t*)charbuf, sizeof(charbuf), 100);
+//    	HAL_UART_Transmit(&huart2, (uint8_t*)charbuf, sizeof(charbuf), 100);
         uint8_t *zigbeeMsgPtr = &zigbeeMessage[memPtr];
         uint8_t *rawPtr = &zigbeeRaw[0];
         memcpy(zigbeeMsgPtr, rawPtr, sizeof(uint8_t) * MAX_MSG_LEN / 2);
@@ -971,40 +937,41 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart){
 //	}
 	if(huart == &huart1){
 //		char charbuf[] = "DMA\r\n";
-//		HAL_UART_Transmit(&huart3, (uint8_t*)charbuf, sizeof(charbuf), 100);
+//		HAL_UART_Transmit(&huart2, (uint8_t*)charbuf, sizeof(charbuf), 100);
 		uint8_t *zigbeeMsgPtr = &zigbeeMessage[memPtr];
 		uint8_t *rawPtr = &zigbeeRaw[MAX_MSG_LEN / 2];
 		memcpy(zigbeeMsgPtr, rawPtr, sizeof(uint8_t) * MAX_MSG_LEN / 2);
 		memPtr = modularAdd(MAX_MSG_LEN / 2, memPtr, MAX_MSG_LEN * 2);
 		zigbeeMessageRecord();
+		decodeGameMessage();
 	}
-	if(huart == &huart3)
-		{
-				for(uint8_t i = 0; i< 8; i++) {
-									for(uint8_t j = 0; j< 8; j++) {
-										map[i][j] = k210Receive[i*8+j];
-									}
-								}
-								for(uint8_t i = 0; i< 8; i++) {
-									char char_buf[200];
-									int char_buf_len = sprintf(char_buf, "Row %d: \n%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t\r\n", i, map[i][0], map[i][1], map[i][2], map[i][3], map[i][4], map[i][5], map[i][6], map[i][7]);
-									HAL_UART_Transmit(&huart2, (uint8_t*)char_buf, char_buf_len, 100);
-								}
-
-			HAL_UART_Receive_DMA(&huart3,k210Receive,64);
-		}
+//	if(huart == &huart3)
+//		{
+//				for(uint8_t i = 0; i< 8; i++) {
+//									for(uint8_t j = 0; j< 8; j++) {
+//										map[i][j] = k210Receive[i*8+j];
+//									}
+//								}
+//								for(uint8_t i = 0; i< 8; i++) {
+//									char char_buf[200];
+//									int char_buf_len = sprintf(char_buf, "Row %d: \n%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t\r\n", i, map[i][0], map[i][1], map[i][2], map[i][3], map[i][4], map[i][5], map[i][6], map[i][7]);
+//									HAL_UART_Transmit(&huart2, (uint8_t*)char_buf, char_buf_len, 100);
+//								}
+//
+//			HAL_UART_Receive_DMA(&huart3,k210Receive,64);
+//		}
 }
 
 void set_direction(int mfr, int mfl, int mbr, int mbl){
-	HAL_GPIO_WritePin(GPIOB,GPIO_PIN_9, mfl == 1 ? 1 : 0);
-	HAL_GPIO_WritePin(GPIOB,GPIO_PIN_8, mfl == 1 ? 0 : 1);
-	HAL_GPIO_WritePin(GPIOB,GPIO_PIN_4, mfr == 1 ? 1 : 0);
-	HAL_GPIO_WritePin(GPIOB,GPIO_PIN_3, mfr == 1 ? 0 : 1);
+	HAL_GPIO_WritePin(GPIOB,GPIO_PIN_9, mfl == 1 ? GPIO_PIN_SET : GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOB,GPIO_PIN_8, mfl == 1 ? GPIO_PIN_RESET : GPIO_PIN_SET);
+	HAL_GPIO_WritePin(GPIOB,GPIO_PIN_4, mfr == 1 ? GPIO_PIN_SET : GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOB,GPIO_PIN_3, mfr == 1 ? GPIO_PIN_RESET : GPIO_PIN_SET);
 
-	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_0, mbr == 1 ? 0 : 1);
-	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_1, mbr == 1 ? 1 : 0);
-	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_2, mbl == 1 ? 1 : 0);
-	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_3, mbl == 1 ? 0 : 1);
+	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_0, mbr == 1 ? GPIO_PIN_RESET : GPIO_PIN_SET);
+	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_1, mbr == 1 ? GPIO_PIN_SET : GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_2, mbl == 1 ? GPIO_PIN_SET : GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOC,GPIO_PIN_3, mbl == 1 ? GPIO_PIN_RESET : GPIO_PIN_SET);
 }
 
 void set_motor_speed(int mfr, int mfl, int mbr, int mbl){
@@ -1017,42 +984,42 @@ void set_motor_speed(int mfr, int mfl, int mbr, int mbl){
 void motor_forward(uint16_t time){
 	set_direction(1,1,1,1);
 	set_motor_speed(1000,1000,1000,1000);
-	HAL_Delay(time*0.8);
+	osDelay((int)(time*0.7));
 	set_motor_speed(500,500,500,500);
-	HAL_Delay(time*0.2);
+	osDelay((int)(time*0.3));
 	set_direction(0,0,0,0);
 	set_motor_speed(1000,1000,1000,1000);
-	HAL_Delay(80);
+	osDelay(60);
 	set_motor_speed(0,0,0,0);
 }
 
 void motor_backward(uint16_t time){
 	set_direction(0,0,0,0);
 		set_motor_speed(1000,1000,1000,1000);
-		HAL_Delay(time*0.8);
+		osDelay((int)(time*0.7));
 		set_motor_speed(500,500,500,500);
-		HAL_Delay(time*0.2);
+		osDelay((int)(time*0.3));
 		set_direction(1,1,1,1);
 		set_motor_speed(1000,1000,1000,1000);
-		HAL_Delay(80);
+		osDelay(60);
 		set_motor_speed(0,0,0,0);
 }
 
 void motor_left(uint16_t time){
 	set_direction(1,0,1,0);
 	set_motor_speed(1000,1000,1000,1000);
-	HAL_Delay(time);
+	osDelay(time);
 	set_direction(0,1,0,1);
-	HAL_Delay(65);
+	osDelay(65);
 	set_motor_speed(0,0,0,0);
 }
 
 void motor_right(uint16_t time){
 	set_direction(0,1,0,1);
 	set_motor_speed(1000,1000,1000,1000);
-	HAL_Delay(time);
+	osDelay(time);
 	set_direction(1,0,1,0);
-	HAL_Delay(65);
+	osDelay(65);
 	set_motor_speed(0,0,0,0);
 }
 
@@ -1063,7 +1030,7 @@ void motor_right_90deg(){
 }
 
 void motor_left_90deg(){
-	motor_left(481);
+	motor_left(475);
 	currentDirection ++;
 	return;
 }
@@ -1086,7 +1053,8 @@ uint8_t zigbeeMessageRecord()
             tempZigbeeMessage[modularAdd(msgIndex, 1, MAX_MSG_LEN * 2)] == 0xAA)
         {
 
-
+        	char charbuf[] = "Header Found\r\n";
+        	HAL_UART_Transmit(&huart2, (uint8_t*)charbuf, sizeof(charbuf), 100);
             cutavoid[0] = tempZigbeeMessage[modularAdd(msgIndex, 2, MAX_MSG_LEN * 2)];
             cutavoid[1] = tempZigbeeMessage[modularAdd(msgIndex, 3, MAX_MSG_LEN * 2)];
             byteNum = *((int16_t*)(cutavoid));
@@ -1097,6 +1065,8 @@ uint8_t zigbeeMessageRecord()
             {
                 break;
             }
+        } else {
+
         }
         msgIndex = modularAdd(msgIndex, -1, MAX_MSG_LEN * 2);
     }
@@ -1119,7 +1089,6 @@ uint8_t zigbeeMessageRecord()
         {
             gameStatusMessage[i] = tempZigbeeMessage[modularAdd(msgIndex, 5 + i, MAX_MSG_LEN * 2)];
         }
-        decodeGameMessage();
     }
     return 0;
 }
@@ -1140,7 +1109,7 @@ GameStage_edc25 getGameStage()
 
 void getHeightOfAllChunks(uint8_t *dest)
 {
-    memcpy(dest, gameStatusMessage[5], 64);
+    memcpy(dest, (void*)gameStatusMessage[5], 64);
 }
 
 uint8_t getHeightOfId(uint8_t id)
@@ -1203,25 +1172,25 @@ uint8_t getWoolCount()
 void attack_id(uint8_t chunk_id)
 {
     uint8_t slaver_msg[7] = {0x55, 0xAA, 0x02, 0x00, (uint8_t)(0^chunk_id), 0, chunk_id};
-    HAL_UART_Transmit(&huart1, slaver_msg, 7, HAL_MAX_DELAY);
+    HAL_UART_Transmit(&huart1, slaver_msg, 7, 100);
 }
 
 void place_block_id(uint8_t chunk_id)
 {
     uint8_t slaver_msg[7] = {0x55, 0xAA, 0x02, 0x00, (uint8_t)(1^chunk_id), 1, chunk_id};
-    HAL_UART_Transmit(&huart1, slaver_msg, 7, HAL_MAX_DELAY);
+    HAL_UART_Transmit(&huart1, slaver_msg, 7, 100);
 }
 
 void trade_id(uint8_t item_id)
 {
     uint8_t slaver_msg[7] = {0x55, 0xAA, 0x02, 0x00, (uint8_t)(2^item_id), 2, item_id};
-    HAL_UART_Transmit(&huart1, slaver_msg, 7, HAL_MAX_DELAY);
+    HAL_UART_Transmit(&huart1, slaver_msg, 7, 100);
 }
 
 void decodeGameMessage() {
 	game_time = getGameTime();
 	current_stage = getGameStage();
-	getHeightOfAllChunks(map_height);
+	getHeightOfAllChunks((uint8_t*)map_height);
 	has_bed = hasBed();
 	has_bed_opponent = hasBedOpponent();
 	getPosition(&Pos);
@@ -1235,6 +1204,9 @@ void decodeGameMessage() {
 //		 lastEmeraldCount = emeraldCount;
 	 }
 	wool_count = getWoolCount();
+//	char char_buf[200];
+//    int char_buf_len = sprintf(char_buf, "t: %ld, ht: %d, ag: %d, wc: %d, x: %f, y: %f, xo: %f, yo: %f\r\n", game_time, health, agility, emerald_count, Pos.posx, Pos.posy, PosOpp.posx, PosOpp.posy);
+//    HAL_UART_Transmit(&huart2, (uint8_t*)char_buf, char_buf_len, 100);
 }
 
 Position_edc25 getMinePosiiton(uint8_t type) {
@@ -1257,84 +1229,295 @@ void goToPos(Position_edc25 pos) {
 		while(Pos.coordx() != pos.coordx()) {
 			if(Pos.coordx() > pos.coordx()) {
 				Position_edc25 destination = {Pos.posx-1, Pos.posy};
-				if(map_height[destination.chunkid()] == 0) {
-					place_block_id(destination.chunkid());
-				}
-				motor_backward(500);
+				place_block_id(destination.chunkid());
+				motor_forward(300);
+				osDelay(1000);
 			} else if(Pos.coordx() < pos.coordx()) {
 				Position_edc25 destination = {Pos.posx+1, Pos.posy};
-				if(map_height[destination.chunkid()] == 0) {
-					place_block_id(destination.chunkid());
-				}
-				motor_forward(500);
+				place_block_id(destination.chunkid());
+				motor_backward(300);
+				osDelay(1000);
 			}
-			HAL_Delay(1000);
 		}
 		if(currentDirection == 1) {
 			motor_right_90deg();
 		} else if (currentDirection == 3) {
 			motor_left_90deg();
 		}
-		HAL_Delay(1000);
+		osDelay(1000);
 		while(Pos.coordy() != pos.coordy()) {
 			if(Pos.coordy() > pos.coordy()) {
 				Position_edc25 destination = {Pos.posx, Pos.posy - 1};
-				if(map_height[destination.chunkid()] == 0) {
-					place_block_id(destination.chunkid());
-				}
-				motor_backward(500);
+				place_block_id(destination.chunkid());
+				motor_forward(300);
+				osDelay(1000);
 			} else if(Pos.coordx() < pos.coordx()) {
 				Position_edc25 destination = {Pos.posx, Pos.posy + 1};
-				if(map_height[destination.chunkid()] == 0) {
-					place_block_id(destination.chunkid());
-				}
-				motor_forward(500);
+				place_block_id(destination.chunkid());
+				motor_backward(300);
+				osDelay(1000);
 			}
-			HAL_Delay(1000);
+
 		}
 	} else {
 		while(Pos.coordy() != pos.coordy()) {
 			if(Pos.coordy() > pos.coordy()) {
 				Position_edc25 destination = {Pos.posx, Pos.posy - 1};
-				if(map_height[destination.chunkid()] == 0) {
-					place_block_id(destination.chunkid());
-				}
-				motor_backward(500);
+				place_block_id(destination.chunkid());
+				motor_forward(300);
+				osDelay(1000);
 			} else if(Pos.coordx() < pos.coordx()) {
 				Position_edc25 destination = {Pos.posx, Pos.posy + 1};
-				if(map_height[destination.chunkid()] == 0) {
-					place_block_id(destination.chunkid());
-				}
-				motor_forward(500);
+				place_block_id(destination.chunkid());
+				motor_backward(300);
+				osDelay(1000);
 			}
-			HAL_Delay(1000);
+
 		}
 		if(currentDirection == 0) {
 			motor_right_90deg();
 		} else if (currentDirection == 2) {
 			motor_left_90deg();
 		}
-		HAL_Delay(1000);
+		osDelay(1000);
 		while(Pos.coordx() != pos.coordx()) {
 			if(Pos.coordx() > pos.coordx()) {
 				Position_edc25 destination = {Pos.posx-1, Pos.posy};
-				if(map_height[destination.chunkid()] == 0) {
-					place_block_id(destination.chunkid());
-				}
-				motor_backward(500);
+				place_block_id(destination.chunkid());
+				motor_forward(300);
+				osDelay(1000);
 			} else if(Pos.coordx() < pos.coordx()) {
 				Position_edc25 destination = {Pos.posx+1, Pos.posy};
-				if(map_height[destination.chunkid()] == 0) {
-					place_block_id(destination.chunkid());
-				}
-				motor_forward(500);
+				place_block_id(destination.chunkid());
+				motor_backward(300);
+				osDelay(1000);
 			}
-			HAL_Delay(1000);
+
 		}
 	}
 
 }
 /* USER CODE END 4 */
+
+/* USER CODE BEGIN Header_StartDefaultTask */
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartDefaultTask */
+void StartDefaultTask(void *argument)
+{
+  /* USER CODE BEGIN 5 */
+  /* Infinite loop */
+	int state = 0;
+	int count = 0;
+	Position_edc25 destination;
+	osDelay(1000);
+	  for (;;)
+	  {
+	    /* USER CODE END WHILE */
+
+	    /* USER CODE BEGIN 3 */
+
+		  if(state == 0 && current_stage == RUNNING && count < 100) {
+			  while(getHeightOfId(8) == 0) {
+			  				  place_block_id(8);
+			  				  osDelay(1000);
+			  			  }
+
+			  while(getHeightOfId(9) == 0) {
+			  				  place_block_id(9);
+			  				  osDelay(1000);
+			  			  }
+			  motor_forward(350);
+			  osDelay(1000);
+			  motor_left_90deg();
+			  osDelay(1000);
+
+			  motor_forward(350);
+			  osDelay(1000);
+			  while(getHeightOfId(10) == 0) {
+				  place_block_id(10);
+				  osDelay(1000);
+			  }
+			  motor_forward(350);
+			  osDelay(1000);
+			  while(getHeightOfId(11) == 0) {
+				  place_block_id(11);
+				  osDelay(1000);
+			  }
+			  motor_forward(350);
+			  osDelay(1000);
+			  state = 1;
+		  } else if(state == 1 && current_stage == RUNNING && count < 100) {
+			  motor_backward(350);
+			  osDelay(1000);
+			  motor_backward(350);
+			  osDelay(1000);
+			  motor_backward(350);
+			  osDelay(1000);
+			  motor_right_90deg();
+			  osDelay(1000);
+//			  place_block_id(63);
+//			  osDelay(100);
+			  motor_backward(350);
+		      osDelay(1000);
+		      state = 2;
+		  } else if(current_stage == RUNNING && count < 100) {
+			  for(int i=0; i<20;i++){
+				  trade_id(1);
+				  	  osDelay(1000);
+			  }
+			  state = 0;
+			  count ++;
+		  }
+
+//		  					motor_forward(300);
+//		  					  osDelay(100);
+		  // Perform actions based on game stage
+
+	//	  decodeGameMessage();
+	//	  osDelay(1000);
+//		  switch (current_stage) {
+//			  case READY:
+//				  // Collect emeralds
+//	//			  if (emeraldDistance <= 1) {
+//	//				  // Collect emerald
+//	//				  // Update emeraldDistance
+//	//			  } else {
+//	//				  // Move towards emerald
+//	//				  // Update emeraldDistance
+//	//			  }
+//	//
+//	//			  // Check if emerald is not reachable
+//	//			  if (emeraldDistance > 3) {
+//	//				  // Return to base or consider 'suicide'
+//	//			  }
+//
+//				  break;
+//
+//			  case RUNNING:
+//				  // Increase bed height based on wool collection
+//				  // Monitor health (HP) and opponent's potential attack damage
+//				  // Combat actions - attacking opponents, retreating, counter-attacking
+//
+//				  // Check if opponent is within range
+//				  if(!isRun){
+//					  isRun = true;
+////					  Position_edc25 destination = {3.0, 3.0};
+////					  goToPos(destination);
+//
+//				  }
+//
+//	//				destination = {5.0, 5.0};
+//	//				goToPos(destination);
+//	//				osDelay(1000);
+//	//				destination = {1.0, 4.0};
+//	//				goToPos(destination);
+//
+//	//			  if (opponentBedDistance <= 3) {
+//	//				  // Attack the opponent's bed and retreat
+//	//			  }
+//	//
+//	//			  // Check received damage from opponent's attack
+//	//			  if (health <= 3 * opponentAttackDamage) {
+//	//				  // Retreat
+//	//			  } else if (health >= 3 * opponentAttackDamage && opponentAttackDamage <= 5) {
+//	//				  // Counter-attack
+//	//			  }
+//
+//				  // Encounter evasion logic
+//
+//				  break;
+//
+//			  case BATTLING:
+//				  // Implement actions during a battle
+//
+//				  break;
+//
+//			  case FINISHED:
+//				  // Handle game finishing actions
+//
+//				  break;
+//
+//			  default:
+//				  // Handle default case or error
+//
+//				  break;
+//		  }
+//		  osDelay(10);
+	//	  int hp = getHealth();
+	//	  	  int32_t time = getGameTime();
+	//	  	  int Agility = getAgility();
+	//	  	  int count = getWoolCount();
+	//	  	  getPosition(&Pos);
+	//		  getPositionOpponent(&PosOpp);
+	//
+	//		  char char_buf[200];
+	//		  int char_buf_len = sprintf(char_buf, "t: %ld, ht: %d, ag: %d, wc: %d, x: %f, y: %f, xo: %f, yo: %f\r\n", time, hp, Agility, count, Pos.posx, Pos.posy, PosOpp.posx, PosOpp.posy);
+	//		  HAL_UART_Transmit(&huart2, (uint8_t*)char_buf, char_buf_len, 100);
+	//	  		  osDelay(1000);
+	//
+	//	  	  osDelay(2000);
+	//
+
+	//	  	  motor_forward(500);
+	//	  	  osDelay(1000);
+	//
+	//	  	  motor_backward(500);
+	//		  osDelay(1000);
+	//
+	//		  motor_right(457);
+	//		  osDelay(1000);
+	//
+	//		  motor_left(481);
+	//		  osDelay(1000);
+
+
+	  }
+  /* USER CODE END 5 */
+}
+
+/* USER CODE BEGIN Header_StartTask02 */
+/**
+* @brief Function implementing the myTask02 thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartTask02 */
+void StartTask02(void *argument)
+{
+  /* USER CODE BEGIN StartTask02 */
+  /* Infinite loop */
+  for(;;)
+  {
+//	  trade_id(1);
+	  osDelay(1000);
+  }
+  /* USER CODE END StartTask02 */
+}
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM6 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM6) {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.
